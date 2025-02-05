@@ -103,8 +103,8 @@ def load_and_filter_data(files, common_country_codes):
 
     air_pollution_df = air_pollution_df[
         (air_pollution_df["SpatialDimValueCode"].isin(common_country_codes)) & 
-        (air_pollution_df["Year"] == 2018) & 
-        (air_pollution_df["Sex"] == "Both sexes")
+        (air_pollution_df["Period"] == 2018) & 
+        (air_pollution_df["Dim1"] == "Both sexes")
     ]
     
     env_data = {}
@@ -176,10 +176,10 @@ def start_predict_xgboost():
         if air_pollution_df is None:
             print("ERROR: Data loading failed.")
             return
-
         print("Merging data...")
         merged_df = merge_data(air_pollution_df, env_data, socio_data)
         print(f"Merged data has {merged_df.shape[0]} rows and {merged_df.shape[1]} columns.")
+        print("air_pollution->",merged_df)
 
     except Exception as e:
         print("An error occurred:", e)
