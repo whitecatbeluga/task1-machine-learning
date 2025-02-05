@@ -1,15 +1,8 @@
 import pandas as pd
 import numpy as np
-import xgboost as xgb
-import shap
 import random
 import matplotlib.pyplot as plt
 import plotly.express as px
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-import os
-
-print("Starting the script...")  # Ensures the script starts running
 
 def define_files():
     files = {
@@ -41,15 +34,12 @@ def get_common_country_codes(files, env_factors, socio_factors, air_pollution_fi
     for factor in env_factors:
         try:
             df = pd.read_csv(files[factor], on_bad_lines='skip')
-
-            # Clean column names
             df = clean_column_names(df)
 
-            if "iso3_country" in df.columns:  # Using "iso3_country" for country codes
+            if "iso3_country" in df.columns:
                 env_country_codes.update(df["iso3_country"].dropna().unique())
             else:
                 print(f"WARNING: 'iso3_country' column not found in {factor} dataset!")
-
         except Exception as e:
             print(f"Error processing {factor}: {e}")
 
@@ -58,30 +48,24 @@ def get_common_country_codes(files, env_factors, socio_factors, air_pollution_fi
         try:
             skip_rows = 3  # Skip metadata rows
             df = pd.read_csv(files[factor], skiprows=skip_rows, on_bad_lines='skip')
-
-            # Clean column names
             df = clean_column_names(df)
 
-            if "Country Code" in df.columns:  # Using "Country Code" for country codes
+            if "Country Code" in df.columns:
                 socio_country_codes.update(df["Country Code"].dropna().unique())
             else:
                 print(f"WARNING: 'Country Code' column not found in {factor} dataset!")
-
         except Exception as e:
             print(f"Error processing {factor}: {e}")
 
     # Extract unique country codes from air pollution data (using 'SpatialDimValueCode')
     try:
         df = pd.read_csv(files[air_pollution_file], on_bad_lines='skip')
-
-        # Clean column names
         df = clean_column_names(df)
 
-        if "SpatialDimValueCode" in df.columns:  # Using "SpatialDimValueCode" for country codes
+        if "SpatialDimValueCode" in df.columns:
             air_pollution_country_codes.update(df["SpatialDimValueCode"].dropna().unique())
         else:
             print(f"WARNING: 'SpatialDimValueCode' column not found in {air_pollution_file} dataset!")
-
     except Exception as e:
         print(f"Error processing {air_pollution_file}: {e}")
 
@@ -101,10 +85,11 @@ def load_and_filter_data(files, common_country_codes):
         print("ERROR: 'SpatialDimValueCode' column missing in air_pollution_death dataset!")
         return None, None, None
 
-    air_pollution_df = air_pollution_df[
-        (air_pollution_df["SpatialDimValueCode"].isin(common_country_codes)) & 
-        (air_pollution_df["Year"] == 2018) & 
-        (air_pollution_df["Sex"] == "Both sexes")
+    # Filter data for common country codes and 2018
+    air_pollution_df = air_pollution_df[(
+        air_pollution_df["SpatialDimValueCode"].isin(common_country_codes)) & 
+        (air_pollution_df["Period"] == 2018) & 
+        (air_pollution_df["Dim1"] == "Both sexes")
     ]
     
     env_data = {}
@@ -143,16 +128,85 @@ def merge_data(air_pollution_df, env_data, socio_data):
 
     for factor, df in env_data.items():
         if "iso3_country" in df.columns and "Value" in df.columns:
-            merged_df = pd.merge(merged_df, df[['iso3_country', 'Value']], on='iso3_country', how='left', suffixes=('', f'_{factor}'))
+            merged_df = pd.merge(merged_df, df[['iso3_country', 'Value']], on='iso3_country', how='outer')
 
     for factor, df in socio_data.items():
         if "Country Code" in df.columns and "Value" in df.columns:
-            merged_df = pd.merge(merged_df, df[['Country Code', 'Value']], on='Country Code', how='left', suffixes=('', f'_{factor}'))
-
+            merged_df = pd.merge(merged_df, df[['Country Code', 'Value']], on='Country Code', how='outer')
     return merged_df
 
+def process_environment_and_socioeconomic_data(env_data, socio_data, common_country_codes):
+    environment_results = []
+    socioeconomic_results = []
+
+    # **(B) Processing Environment Data**
+    for factor, df in env_data.items():
+        if "iso3_country" in df.columns and "start_time" in df.columns and "emissions_quantity" in df.columns:
+            try:
+                df["start_time"] = pd.to_datetime(df["start_time"], errors="coerce")  # Ensure proper date format
+                df_filtered = df[(
+                    df["iso3_country"].isin(common_country_codes)) & 
+                    (df["start_time"] >= "2018-01-01")
+                ]
+                df_grouped = df_filtered.groupby("iso3_country", as_index=False)["emissions_quantity"].sum()
+                df_grouped.rename(columns={"iso3_country": "Country Code", "emissions_quantity": factor}, inplace=True)
+                environment_results.append(df_grouped)
+            except Exception as e:
+                print(f"Error processing {factor}: {e}")
+        else:
+            print(f"WARNING: Missing required columns in {factor} dataset!")
+
+    # **(C) Processing Socioeconomic Data**
+    for factor, df in socio_data.items():
+        if "Country Code" in df.columns and "2018" in df.columns:
+            try:
+                df_filtered = df[df["Country Code"].isin(common_country_codes)][["Country Code", "2018"]]
+                df_filtered.rename(columns={"2018": factor}, inplace=True)
+                socioeconomic_results.append(df_filtered)
+            except Exception as e:
+                print(f"Error processing {factor}: {e}")
+        else:
+            print(f"WARNING: Missing required columns in {factor} dataset!")
+
+    return environment_results, socioeconomic_results
+
+def merge_environment_socioeconomic_air_pollution_data(environment_results, socioeconomic_results, air_pollution_df):
+    # **(A) Merge environment_data and socioeconomic_data on common country codes**
+    # environment_data_combined = pd.concat(environment_results, ignore_index=True)
+    # socioeconomic_data_combined = pd.concat(socioeconomic_results, ignore_index=True)
+
+    environment_data_combined = environment_results[0]
+    for i in environment_results[1:]:
+        environment_data_combined = pd.merge(environment_data_combined,i,on="Country Code", how="outer")
+    
+    merge_final = environment_data_combined
+    
+    for i in socioeconomic_results:
+        socioeconomic_data_combined = pd.merge(merge_final,i,on="Country Code", how="outer")
+
+
+    # Merge environment and socioeconomic data on 'Country Code'
+    # merged_env_socio_data = pd.merge(environment_data_combined, socioeconomic_data_combined, on="Country Code", how="outer")
+    
+    # **(B) Aggregate air pollution deaths per country**
+    air_pollution_agg = air_pollution_df.groupby("SpatialDimValueCode", as_index=False)["FactValueNumeric"].sum()
+    air_pollution_agg.rename(columns={"SpatialDimValueCode": "Country Code"}, inplace=True)
+
+    # **(C) Merge aggregated air pollution data**
+    merged_data_with_deaths = pd.merge(merge_final, air_pollution_agg, 
+                                       on='Country Code', how='outer')
+
+    # Rename columns to meaningful names
+    merged_data_with_deaths.rename(columns={
+        'name_x': 'environmental_value',
+        'name_y': 'socioeconomic_value',
+        'Value': 'air_pollution_deaths'
+    }, inplace=True)
+
+    return merged_data_with_deaths
+
 def start_predict_xgboost():
-    try:
+    # try:
         random_seed = 42
         np.random.seed(random_seed)
         random.seed(random_seed)
@@ -177,12 +231,31 @@ def start_predict_xgboost():
             print("ERROR: Data loading failed.")
             return
 
-        print("Merging data...")
-        merged_df = merge_data(air_pollution_df, env_data, socio_data)
-        print(f"Merged data has {merged_df.shape[0]} rows and {merged_df.shape[1]} columns.")
+        print("Processing environment and socioeconomic data...")
+        environment_results, socioeconomic_results = process_environment_and_socioeconomic_data(env_data, socio_data, common_country_codes)
 
-    except Exception as e:
-        print("An error occurred:", e)
+        # **Merge environment, socioeconomic, and air pollution data**
+        print("Merging environment, socioeconomic, and air pollution data...")
+        merged_data = merge_environment_socioeconomic_air_pollution_data(environment_results, socioeconomic_results, air_pollution_df)
+        # Rename the columns to more meaningful names
+        # merged_data.rename(columns={
+        #     'name_x': 'environmental_value',
+        #     'name_y': 'socioeconomic_value',
+        #     'SpatialDimValueCode': 'Country Code',
+        #     'Value': 'air_pollution_deaths'  # Assuming 'Value' represents the air pollution deaths
+        # }, inplace=True)
+
+        print(f"Merged data has {merged_data.shape[0]} rows and {merged_data.shape[1]} columns.")
+        print(merged_data)  # Optional: Check the first few rows of the merged dataframe
+
+        if merged_data is None or merged_data.empty:
+            print("ERROR: merged_data is empty or not defined.")
+        else:
+            merged_data.to_csv("merged_data.csv", index=False)
+            print("merged_data.csv saved successfully!")
+
+    # except Exception as e:
+    #     print("An error occurred:", e)
 
 if __name__ == "__main__":
     print("Calling start_predict_xgboost()...")
