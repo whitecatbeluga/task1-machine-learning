@@ -1,0 +1,72 @@
+body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-family: 'Tahoma', sans-serif;
+}
+hr {
+    width: 70%;
+    margin-bottom: 50px;
+}
+.plot-container {
+    width: 80%;
+    margin-bottom: 20px;
+}
+.scatter-form-container {
+    display: grid;
+    gap: 20px;
+    grid-template-areas:
+    "title"
+    "scatter"
+    "form";
+    align-items: center;
+    max-height: fit-content;
+    margin-bottom: 30px;
+}
+@media (min-width: 1250px) {
+    .scatter-form-container {
+        grid-template-columns: 1fr 2fr;
+        grid-template-areas:
+            "title title"
+            "form scatter";
+    }
+}
+.scatter-form-title {
+    grid-area: title;
+    text-align: center;
+}
+.scatter-container {
+    grid-area: scatter;
+    width: 1000px;
+    display: flex;
+}
+.form-container {
+    grid-area: form;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-left: 5%;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+}
+.radio-container {
+    display: inherit;
+    align-items: start;
+    justify-content: end;
+    flex-direction: inherit;
+}
+.option-container {
+    display: inherit;
+    padding-left: 25px;
+    justify-content: start;
+    flex-direction: inherit;
+}
+.adjusted-score {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    margin-bottom: 50px;
+}
