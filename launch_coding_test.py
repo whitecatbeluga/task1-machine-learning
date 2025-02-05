@@ -128,12 +128,11 @@ def merge_data(air_pollution_df, env_data, socio_data):
 
     for factor, df in env_data.items():
         if "iso3_country" in df.columns and "Value" in df.columns:
-            merged_df = pd.merge(merged_df, df[['iso3_country', 'Value']], on='iso3_country', how='left', suffixes=('', f'_{factor}'))
+            merged_df = pd.merge(merged_df, df[['iso3_country', 'Value']], on='iso3_country', how='outer')
 
     for factor, df in socio_data.items():
         if "Country Code" in df.columns and "Value" in df.columns:
-            merged_df = pd.merge(merged_df, df[['Country Code', 'Value']], on='Country Code', how='left', suffixes=('', f'_{factor}'))
-
+            merged_df = pd.merge(merged_df, df[['Country Code', 'Value']], on='Country Code', how='outer')
     return merged_df
 
 def process_environment_and_socioeconomic_data(env_data, socio_data, common_country_codes):
@@ -150,7 +149,7 @@ def process_environment_and_socioeconomic_data(env_data, socio_data, common_coun
                     (df["start_time"] >= "2018-01-01")
                 ]
                 df_grouped = df_filtered.groupby("iso3_country", as_index=False)["emissions_quantity"].sum()
-                df_grouped.rename(columns={"iso3_country": "Country Code", "emissions_quantity": "name"}, inplace=True)
+                df_grouped.rename(columns={"iso3_country": "Country Code", "emissions_quantity": factor}, inplace=True)
                 environment_results.append(df_grouped)
             except Exception as e:
                 print(f"Error processing {factor}: {e}")
@@ -162,7 +161,7 @@ def process_environment_and_socioeconomic_data(env_data, socio_data, common_coun
         if "Country Code" in df.columns and "2018" in df.columns:
             try:
                 df_filtered = df[df["Country Code"].isin(common_country_codes)][["Country Code", "2018"]]
-                df_filtered.rename(columns={"2018": "name"}, inplace=True)
+                df_filtered.rename(columns={"2018": factor}, inplace=True)
                 socioeconomic_results.append(df_filtered)
             except Exception as e:
                 print(f"Error processing {factor}: {e}")
@@ -173,21 +172,41 @@ def process_environment_and_socioeconomic_data(env_data, socio_data, common_coun
 
 def merge_environment_socioeconomic_air_pollution_data(environment_results, socioeconomic_results, air_pollution_df):
     # **(A) Merge environment_data and socioeconomic_data on common country codes**
-    environment_data_combined = pd.concat(environment_results, ignore_index=True)
-    socioeconomic_data_combined = pd.concat(socioeconomic_results, ignore_index=True)
+    # environment_data_combined = pd.concat(environment_results, ignore_index=True)
+    # socioeconomic_data_combined = pd.concat(socioeconomic_results, ignore_index=True)
+
+    environment_data_combined = environment_results[0]
+    for i in environment_results[1:]:
+        environment_data_combined = pd.merge(environment_data_combined,i,on="Country Code", how="outer")
+    
+    merge_final = environment_data_combined
+    
+    for i in socioeconomic_results:
+        socioeconomic_data_combined = pd.merge(merge_final,i,on="Country Code", how="outer")
+
 
     # Merge environment and socioeconomic data on 'Country Code'
-    merged_env_socio_data = pd.merge(environment_data_combined, socioeconomic_data_combined, on="Country Code", how="inner")
+    # merged_env_socio_data = pd.merge(environment_data_combined, socioeconomic_data_combined, on="Country Code", how="outer")
     
-    # **(B) Merge with air pollution deaths data**
-    merged_data_with_deaths = pd.merge(merged_env_socio_data, air_pollution_df[['SpatialDimValueCode', 'Value']], 
-                                       left_on='Country Code', right_on='SpatialDimValueCode', how='inner')
+    # **(B) Aggregate air pollution deaths per country**
+    air_pollution_agg = air_pollution_df.groupby("SpatialDimValueCode", as_index=False)["FactValueNumeric"].sum()
+    air_pollution_agg.rename(columns={"SpatialDimValueCode": "Country Code"}, inplace=True)
 
-    # **(C) Return the final merged dataframe**
+    # **(C) Merge aggregated air pollution data**
+    merged_data_with_deaths = pd.merge(merge_final, air_pollution_agg, 
+                                       on='Country Code', how='outer')
+
+    # Rename columns to meaningful names
+    merged_data_with_deaths.rename(columns={
+        'name_x': 'environmental_value',
+        'name_y': 'socioeconomic_value',
+        'Value': 'air_pollution_deaths'
+    }, inplace=True)
+
     return merged_data_with_deaths
 
 def start_predict_xgboost():
-    try:
+    # try:
         random_seed = 42
         np.random.seed(random_seed)
         random.seed(random_seed)
@@ -218,20 +237,25 @@ def start_predict_xgboost():
         # **Merge environment, socioeconomic, and air pollution data**
         print("Merging environment, socioeconomic, and air pollution data...")
         merged_data = merge_environment_socioeconomic_air_pollution_data(environment_results, socioeconomic_results, air_pollution_df)
-        
         # Rename the columns to more meaningful names
-        merged_data.rename(columns={
-            'name_x': 'environmental_value',
-            'name_y': 'socioeconomic_value',
-            'SpatialDimValueCode': 'Country Code',
-            'Value': 'air_pollution_deaths'  # Assuming 'Value' represents the air pollution deaths
-        }, inplace=True)
+        # merged_data.rename(columns={
+        #     'name_x': 'environmental_value',
+        #     'name_y': 'socioeconomic_value',
+        #     'SpatialDimValueCode': 'Country Code',
+        #     'Value': 'air_pollution_deaths'  # Assuming 'Value' represents the air pollution deaths
+        # }, inplace=True)
 
         print(f"Merged data has {merged_data.shape[0]} rows and {merged_data.shape[1]} columns.")
-        print(merged_data.head())  # Optional: Check the first few rows of the merged dataframe
+        print(merged_data)  # Optional: Check the first few rows of the merged dataframe
 
-    except Exception as e:
-        print("An error occurred:", e)
+        if merged_data is None or merged_data.empty:
+            print("ERROR: merged_data is empty or not defined.")
+        else:
+            merged_data.to_csv("merged_data.csv", index=False)
+            print("merged_data.csv saved successfully!")
+
+    # except Exception as e:
+    #     print("An error occurred:", e)
 
 if __name__ == "__main__":
     print("Calling start_predict_xgboost()...")
