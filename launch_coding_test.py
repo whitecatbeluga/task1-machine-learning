@@ -137,11 +137,11 @@ def load_and_filter_data(files, common_country_codes):
 def merge_data(air_pollution_df, env_data, socio_data):
     merged_df = air_pollution_df.copy()
 
-    for factor, df in env_data.items():
+    for df in env_data.items():
         if "iso3_country" in df.columns and "Value" in df.columns:
             merged_df = pd.merge(merged_df, df[['iso3_country', 'Value']], on='iso3_country', how='outer')
 
-    for factor, df in socio_data.items():
+    for df in socio_data.items():
         if "Country Code" in df.columns and "Value" in df.columns:
             merged_df = pd.merge(merged_df, df[['Country Code', 'Value']], on='Country Code', how='outer')
     return merged_df
@@ -248,6 +248,8 @@ def start_predict_xgboost():
         # **Merge environment, socioeconomic, and air pollution data**
         print("Merging environment, socioeconomic, and air pollution data...")
         merged_data = merge_environment_socioeconomic_air_pollution_data(environment_results, socioeconomic_results, air_pollution_df)
+        merged_data = merged_data[merged_data['Country Code'] != 'CHN']
+        merged_data = merged_data[merged_data['Country Code'] != 'IND']
         # Rename the columns to more meaningful names
         # merged_data.rename(columns={
         #     'name_x': 'environmental_value',
@@ -257,7 +259,7 @@ def start_predict_xgboost():
         # }, inplace=True)
 
         print(f"Merged data has {merged_data.shape[0]} rows and {merged_data.shape[1]} columns.")
-        print("MERGE DATA->>>>",merged_data)  # Optional: Check the first few rows of the merged dataframe
+        print(merged_data)  # Optional: Check the first few rows of the merged dataframe
 
         model, X_train_val, y_train_val = train_model(merged_data)
 
@@ -285,14 +287,14 @@ def train_model(df):
     X_test = pd.DataFrame(scaler.transform(X_test), columns=X_test.columns)
 
     xgb_model = xgb.XGBRegressor(
-        subsample=0.7,
-        colsample_bytree=0.6,
-        reg_alpha=1,
-        reg_lambda=5,
+        subsample=0.2,
+        colsample_bytree=0.7,
+        reg_alpha=10,
+        reg_lambda=10,
         random_state=random_seed,
-        n_estimators=100,
-        learning_rate=0.1,
-        max_depth=2, 
+        n_estimators=199,
+        learning_rate=0.066,
+        max_depth=4,
         predictor='cpu_predictor'
     )
 
