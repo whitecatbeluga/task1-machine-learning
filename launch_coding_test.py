@@ -3,6 +3,17 @@ import numpy as np
 import random
 import matplotlib.pyplot as plt
 import plotly.express as px
+import xgboost as xgb
+import shap
+
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import r2_score
+
+
+random_seed = 42
+np.random.seed(random_seed)
+random.seed(random_seed)
 
 def define_files():
     files = {
@@ -246,7 +257,11 @@ def start_predict_xgboost():
         # }, inplace=True)
 
         print(f"Merged data has {merged_data.shape[0]} rows and {merged_data.shape[1]} columns.")
-        print(merged_data)  # Optional: Check the first few rows of the merged dataframe
+        print("MERGE DATA->>>>",merged_data)  # Optional: Check the first few rows of the merged dataframe
+
+        model, X_train_val, y_train_val = train_model(merged_data)
+
+        generate_beeswarm_plot(model, X_train_val)
 
         if merged_data is None or merged_data.empty:
             print("ERROR: merged_data is empty or not defined.")
@@ -256,6 +271,43 @@ def start_predict_xgboost():
 
     # except Exception as e:
     #     print("An error occurred:", e)
+
+def train_model(df):
+    X = df.drop(['SpatialDimValueCode', 'Air Pollution Deaths','FactValueNumeric'], axis=1, errors='ignore')
+    X = X.select_dtypes(include=[np.number])
+    # y = df['Air Pollution Deaths'].astype(float)
+    y = df['FactValueNumeric'].astype(float)
+
+    X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.2, random_state=random_seed)
+
+    scaler = StandardScaler()
+    X_train_val = pd.DataFrame(scaler.fit_transform(X_train_val), columns=X_train_val.columns)
+    X_test = pd.DataFrame(scaler.transform(X_test), columns=X_test.columns)
+
+    xgb_model = xgb.XGBRegressor(
+        subsample=0.7,
+        colsample_bytree=0.6,
+        reg_alpha=1,
+        reg_lambda=5,
+        random_state=random_seed,
+        n_estimators=100,
+        learning_rate=0.1,
+        max_depth=2, 
+        predictor='cpu_predictor'
+    )
+
+    xgb_model.fit(X_train_val, y_train_val)
+    print(f'Train R^2 Score: {r2_score(y_train_val, xgb_model.predict(X_train_val))}')
+    print(f'Test R^2 Score: {r2_score(y_test, xgb_model.predict(X_test))}')
+
+    return xgb_model, X_train_val, y_train_val
+
+def generate_beeswarm_plot(model, X_train_val):
+    explainer = shap.Explainer(model, X_train_val)
+    # shap_values = explainer.shap_values(X_train_val, check_additivity=False)
+    shap_values = explainer(X_train_val)
+    shap.summary_plot(shap_values, X_train_val, plot_type="dot")
+
 
 if __name__ == "__main__":
     print("Calling start_predict_xgboost()...")
