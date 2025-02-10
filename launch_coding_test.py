@@ -1,8 +1,26 @@
+import dash
+from dash import dcc, html
+from dash.dependencies import Input, Output
+import plotly.express as px
+
 import pandas as pd
 import numpy as np
 import random
 import matplotlib.pyplot as plt
 import plotly.express as px
+import xgboost as xgb
+import shap
+import plotly.express as px
+import plotly.graph_objects as go
+
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import r2_score
+
+
+random_seed = 42
+np.random.seed(random_seed)
+random.seed(random_seed)
 
 def define_files():
     files = {
@@ -126,11 +144,11 @@ def load_and_filter_data(files, common_country_codes):
 def merge_data(air_pollution_df, env_data, socio_data):
     merged_df = air_pollution_df.copy()
 
-    for factor, df in env_data.items():
+    for df in env_data.items():
         if "iso3_country" in df.columns and "Value" in df.columns:
             merged_df = pd.merge(merged_df, df[['iso3_country', 'Value']], on='iso3_country', how='outer')
 
-    for factor, df in socio_data.items():
+    for df in socio_data.items():
         if "Country Code" in df.columns and "Value" in df.columns:
             merged_df = pd.merge(merged_df, df[['Country Code', 'Value']], on='Country Code', how='outer')
     return merged_df
@@ -237,6 +255,8 @@ def start_predict_xgboost():
         # **Merge environment, socioeconomic, and air pollution data**
         print("Merging environment, socioeconomic, and air pollution data...")
         merged_data = merge_environment_socioeconomic_air_pollution_data(environment_results, socioeconomic_results, air_pollution_df)
+        merged_data = merged_data[merged_data['Country Code'] != 'CHN']
+        merged_data = merged_data[merged_data['Country Code'] != 'IND']
         # Rename the columns to more meaningful names
         # merged_data.rename(columns={
         #     'name_x': 'environmental_value',
@@ -248,6 +268,12 @@ def start_predict_xgboost():
         print(f"Merged data has {merged_data.shape[0]} rows and {merged_data.shape[1]} columns.")
         print(merged_data)  # Optional: Check the first few rows of the merged dataframe
 
+        model, X_train_val, y_train_val, train_r2, test_r2 = train_model(merged_data)
+
+        generate_beeswarm_plot(model, X_train_val)
+        
+        generate_html_file(merged_data, train_r2, test_r2)
+
         if merged_data is None or merged_data.empty:
             print("ERROR: merged_data is empty or not defined.")
         else:
@@ -256,6 +282,103 @@ def start_predict_xgboost():
 
     # except Exception as e:
     #     print("An error occurred:", e)
+
+def train_model(df):
+    X = df.drop(['SpatialDimValueCode', 'Air Pollution Deaths','FactValueNumeric'], axis=1, errors='ignore')
+    X = X.select_dtypes(include=[np.number])
+    y = df['FactValueNumeric'].astype(float)
+
+    X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.2, random_state=random_seed)
+
+    scaler = StandardScaler()
+    X_train_val = pd.DataFrame(scaler.fit_transform(X_train_val), columns=X_train_val.columns)
+    X_test = pd.DataFrame(scaler.transform(X_test), columns=X_test.columns)
+
+    xgb_model = xgb.XGBRegressor(
+        subsample=0.2,
+        colsample_bytree=0.7,
+        reg_alpha=10,
+        reg_lambda=10,
+        random_state=random_seed,
+        n_estimators=199,
+        learning_rate=0.066,
+        max_depth=4,
+        predictor='cpu_predictor'
+    )
+
+    xgb_model.fit(X_train_val, y_train_val)
+    train_r2 = r2_score(y_train_val, xgb_model.predict(X_train_val))
+    test_r2 = r2_score(y_test, xgb_model.predict(X_test))
+
+    print(f'Train R^2 Score: {train_r2}')
+    print(f'Test R^2 Score: {test_r2}')
+
+    return xgb_model, X_train_val, y_train_val, train_r2, test_r2
+
+def generate_beeswarm_plot(model, X_train_val):
+    explainer = shap.Explainer(model, X_train_val)
+    # shap_values = explainer.shap_values(X_train_val, check_additivity=False)
+    shap_values = explainer(X_train_val)
+    shap.summary_plot(shap_values, X_train_val, plot_type="dot")
+
+
+def generate_html_file(merged_data, train_r2, test_r2):
+    factors = [col for col in merged_data.columns if col not in ['Country Code', 'FactValueNumeric']]
+    scatter_html_blocks = []
+
+    for factor in factors:
+        fig = px.scatter(
+            merged_data,
+            x=factor,
+            y='FactValueNumeric',
+            color='Country Code',
+            title=f"Air Pollution Deaths vs {factor}",
+            labels={'FactValueNumeric': 'Air Pollution Deaths'}
+        )
+        scatter_html_blocks.append(fig.to_html(full_html=False))
+
+    choropleth_map = px.choropleth(
+        merged_data,
+        locations="Country Code",
+        color="FactValueNumeric",
+        hover_data={"Country Code": True, "FactValueNumeric": True},
+        color_continuous_scale=px.colors.sequential.Plasma,
+        title="Global Air Pollution Deaths",
+            labels={"FactValueNumeric": "Air Pollution Deaths"}  # Add label here
+    ).to_html(full_html=False)
+
+    with open("coding_test_output.html", "w", encoding="utf-8") as f:
+        f.write(f"""
+        <html>
+            <head>
+                <title>Air Pollution and Emissions Analysis</title>
+            </head>
+            <body>
+                <h1>Air Pollution Deaths by Country</h1>
+                <h2>Scatter Plots</h2>
+        """)
+
+        for scatter_html in scatter_html_blocks:
+            f.write(scatter_html)
+
+        f.write(f"""
+                <h2>Choropleth Map</h2>
+                {choropleth_map}
+                <div style="text-align: center;">
+                    <h2>Adjusted R² Score</h2>
+                    <p>
+                        Train R²: <strong>{train_r2:.4f}</strong><br />
+                        Test R²: <strong>{test_r2:.4f}</strong>
+                    </p>
+                </div>
+
+                <div>
+                    <h2>SHAP Beeswarm Plot</h2>
+                    <img src="./beeswarm_plot.png" alt="SHAP Beeswarm Plot" style="width:80%; height:auto;">
+                </div>
+            </body>
+        </html>
+        """)
 
 if __name__ == "__main__":
     print("Calling start_predict_xgboost()...")
