@@ -331,11 +331,12 @@ def generate_html_file(merged_data, train_r2, test_r2):
             merged_data,
             x=factor,
             y='FactValueNumeric',
-            color='Country Code',
+            # color='Country Code',
+            text="Country Code",
             title=f"Air Pollution Deaths vs {factor}",
             labels={'FactValueNumeric': 'Air Pollution Deaths'}
         )
-        scatter_html_blocks.append(fig.to_html(full_html=False))
+        scatter_html_blocks.append((factor,fig.to_html(full_html=False)))
 
     choropleth_map = px.choropleth(
         merged_data,
@@ -352,18 +353,69 @@ def generate_html_file(merged_data, train_r2, test_r2):
         <html>
             <head>
                 <title>Air Pollution and Emissions Analysis</title>
+                <style>
+                    .container {{
+                        display: flex;
+                        align-items: flex-start;
+                        gap: 20px;
+                    }}
+                    .radio-buttons {{
+                        display: flex;
+                        flex-direction: column;
+                        min-width: 150px;
+                    }}
+                    .scatter-plot {{
+                        min-width: 600px; /* Adjust as needed */
+                    }}
+                </style>
+                <script>
+                    function showPlot(plotId) {{
+                        var plots = document.getElementsByClassName('scatter-plot');
+                        for (var i = 0; i < plots.length; i++) {{
+                            plots[i].style.display = 'none';
+                        }}
+                        document.getElementById(plotId).style.display = 'block';
+                    }}
+                </script>
             </head>
             <body>
-                <h1>Air Pollution Deaths by Country</h1>
-                <h2>Scatter Plots</h2>
-        """)
-
-        for scatter_html in scatter_html_blocks:
-            f.write(scatter_html)
-
-        f.write(f"""
                 <h2>Choropleth Map</h2>
                 {choropleth_map}
+                <h1>Air Pollution Deaths by Country</h1>
+                <h2>Scatter Plots</h2>
+
+                <div class="container">
+                    <div class="radio-buttons">
+        """)
+
+        # Add radio buttons for each scatter plot
+        for i, (factor,scatter_html) in enumerate(scatter_html_blocks):
+            plot_id = f"plot_{i}"
+            checked_attr = 'checked' if i == 0 else ''
+            f.write(f"""
+                <label>
+                    <input type="radio" name="scatter" onclick="showPlot('{plot_id}')" {checked_attr}>
+                    {factor}
+                </label>
+            """)
+
+        f.write("""
+                    </div> <!-- End of radio-buttons -->
+                    <div>
+        """)
+
+        # Display scatter plots (only the first one visible initially)
+        for i, (factor,scatter_html) in enumerate(scatter_html_blocks):
+            plot_id = f"plot_{i}"
+            display_style = "block" if i == 0 else "none"
+            f.write(f"""
+                <div id="{plot_id}" class="scatter-plot" style="display: {display_style};">
+                    {scatter_html}
+                </div>
+            """)
+
+        f.write(f"""
+              
                 <div style="text-align: center;">
                     <h2>Adjusted R² Score</h2>
                     <p>
