@@ -375,6 +375,12 @@ def generate_html_file(merged_data, train_r2, test_r2):
                         flex-direction: column;
                         min-width: 150px;
                     }}
+                    select{{
+                        padding: 3px;
+                    }}
+                    .option-style {{
+                        padding: 2px;
+                    }}
                 </style>
                 <script>
                     function showPlot(plotId) {{
@@ -413,11 +419,14 @@ def generate_html_file(merged_data, train_r2, test_r2):
             """)
 
         f.write("""
-                <div style="text-align: center; margin: 20px;">
-                    <label>
-                        <input type="checkbox" id="excludeCountries" onchange="toggleCountries()"> Exclude CHN & IND
-                    </label>
-                </div>
+               <div class="option-container">
+                                <br />
+                                <label for="filter-select">Outlier Removal Option:</label>
+                                <select id="filter-select" onchange="showScatterPlot()">
+                                    <option class="option-style" value="with_china_india" selected>Include CHN & IND</option>
+                                    <option class="option-style" value="without_china_india">Exclude CHN & IND</option>
+                                </select>
+                            </div>
                 </div> <!-- End of radio-buttons -->
         """)
 
