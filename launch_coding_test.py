@@ -329,18 +329,19 @@ def generate_beeswarm_plot(model, X_train_val):
 def generate_html_file(merged_data, train_r2, test_r2):
     factors = [col for col in merged_data.columns if col not in ['Country Code', 'FactValueNumeric']]
     scatter_html_blocks = []
-
+    # factor.replace("_", " ").title()
     for factor in factors:
+        correlation = merged_data['FactValueNumeric'].corr(merged_data[factor])
         fig = px.scatter(
             merged_data,
             x=factor,
             y='FactValueNumeric',
             # color='Country Code',
             text="Country Code",
-            title=f"Air Pollution Deaths vs {factor}",
+            title = f"Air Pollution Deaths vs {factor.replace('_', ' ').title()} (Correlation: {round(correlation, 2)})",
             labels={'FactValueNumeric': 'Air Pollution Deaths'}
         )
-        scatter_html_blocks.append((factor,fig.to_html(full_html=False)))
+        scatter_html_blocks.append((factor, fig.to_html(full_html=False)))
 
     choropleth_map = px.choropleth(
         merged_data,
@@ -374,9 +375,6 @@ def generate_html_file(merged_data, train_r2, test_r2):
                         flex-direction: column;
                         min-width: 150px;
                     }}
-                    # .scatter-plot {{
-                    #     min-width: 600px; /* Adjust as needed */
-                    # }}
                 </style>
                 <script>
                     function showPlot(plotId) {{
