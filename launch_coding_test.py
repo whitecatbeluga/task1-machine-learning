@@ -265,8 +265,8 @@ def start_predict_xgboost():
         # merged_data = merged_data[merged_data['Country Code'] != 'CHN']
         # merged_data = merged_data[merged_data['Country Code'] != 'IND']
 
-        if exclude_countries:
-            merged_data = merged_data[~merged_data['Country Code'].isin(['CHN', 'IND'])]
+        # if exclude_countries:
+            # merged_data = merged_data[~merged_data['Country Code'].isin(['CHN', 'IND'])]
 
 
         print(f"Merged data has {merged_data.shape[0]} rows and {merged_data.shape[1]} columns.")
@@ -327,140 +327,185 @@ def generate_beeswarm_plot(model, X_train_val):
 
 
 def generate_html_file(merged_data, train_r2, test_r2):
+    merged_data['Country Code'] = merged_data['Country Code'].str.strip()  # Ensure clean data
+    
     factors = [col for col in merged_data.columns if col not in ['Country Code', 'FactValueNumeric']]
-    scatter_html_blocks = []
-    # factor.replace("_", " ").title()
+    data_without_chn_ind = merged_data[~merged_data['Country Code'].isin(['CHN', 'IND'])]
+
+    scatter_html_blocks = []                      # For all countries
+    scatter_html_blocks_without_chn_ind = []      # Excluding CHN and IND
+
     for factor in factors:
-        correlation = merged_data['FactValueNumeric'].corr(merged_data[factor])
-        fig = px.scatter(
+        # Scatter plots with CHN & IND
+        correlation_all = merged_data['FactValueNumeric'].corr(merged_data[factor])
+        fig_all = px.scatter(
             merged_data,
             x=factor,
             y='FactValueNumeric',
-            # color='Country Code',
             text="Country Code",
-            title = f"Air Pollution Deaths vs {factor.replace('_', ' ').title()} (Correlation: {round(correlation, 2)})",
+            title=f"Air Pollution Deaths vs {factor.replace('_', ' ').title()} (Corr: {round(correlation_all, 2)})",
             labels={'FactValueNumeric': 'Air Pollution Deaths'}
         )
-        scatter_html_blocks.append((factor, fig.to_html(full_html=False)))
+        scatter_html_blocks.append((factor, fig_all.to_html(full_html=False)))
 
-    choropleth_map = px.choropleth(
-        merged_data,
-        locations="Country Code",
-        color="FactValueNumeric",
-        hover_data={"Country Code": True, "FactValueNumeric": True},
-        color_continuous_scale=px.colors.sequential.Reds,
-        title="Global Air Pollution Deaths",
-            labels={"FactValueNumeric": "Air Pollution Deaths"}  # Add label here
-    ).to_html(full_html=False)
+        # Scatter plots without CHN & IND
+        correlation_without = data_without_chn_ind['FactValueNumeric'].corr(data_without_chn_ind[factor])
+        fig_without = px.scatter(
+            data_without_chn_ind,
+            x=factor,
+            y='FactValueNumeric',
+            text="Country Code",
+            title=f"Air Pollution Deaths vs {factor.replace('_', ' ').title()} (Excl. CHN & IND, Corr: {round(correlation_without, 2)})",
+            labels={'FactValueNumeric': 'Air Pollution Deaths'}
+        )
+        scatter_html_blocks_without_chn_ind.append((factor, fig_without.to_html(full_html=False)))
 
-    with open("coding_test_output.html", "w", encoding="utf-8") as f:
-        f.write(f"""
-        <html>
-            <head>
-                <meta charset="UTF-8">
-                <title>Air Pollution and Emissions Analysis</title>
-                <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
-                <style>
-                    body {{
-                        font-family: 'Montserrat', sans-serif;
-                    }}
-                    .container {{
-                        display: flex;
-                        align-items: center;
-                        justify-content: space-around;
-                        gap: 20px;
-                    }}
-                    .radio-buttons {{
-                        display: flex;
-                        flex-direction: column;
-                        min-width: 150px;
-                    }}
-                    select{{
-                        padding: 3px;
-                    }}
-                    .option-style {{
-                        padding: 2px;
-                    }}
-                </style>
-                <script>
-                    function showPlot(plotId) {{
-                        var plots = document.getElementsByClassName('scatter-plot');
-                        for (var i = 0; i < plots.length; i++) {{
-                            plots[i].style.display = 'none';
+        choropleth_map = px.choropleth(
+            merged_data,
+            locations="Country Code",
+            color="FactValueNumeric",
+            hover_data={"Country Code": True, "FactValueNumeric": True},
+            color_continuous_scale=px.colors.sequential.Reds,
+            title="Global Air Pollution Deaths",
+                labels={"FactValueNumeric": "Air Pollution Deaths"}  # Add label here
+        ).to_html(full_html=False)
+
+        with open("coding_test_output.html", "w", encoding="utf-8") as f:
+            f.write(f"""
+            <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <title>Air Pollution and Emissions Analysis</title>
+                    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+                    <style>
+                        body {{
+                            font-family: 'Montserrat', sans-serif;
                         }}
-                        document.getElementById(plotId).style.display = 'block';
-                    }}
-                    function toggleCountries() {{
-                        const exclude = document.getElementById("excludeCountries").checked;
-                        window.location.href = exclude ? "?exclude=true" : "?exclude=false";
-                    }}
-                
-                </script>
-            </head>
-            <body>
-                <h2 style="text-align:center; margin:20px;">Air Pollution Deaths by Country</h2>
-                {choropleth_map}
-                <div></div>
-                <hr class="width:80%"/>
-                <h2 style="text-align:center;">Scatter Plots</h2>
-                <div class="container">
-                    <div class="radio-buttons">
-        """)
+                        .container {{
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-around;
+                            gap: 20px;
+                        }}
+                        .radio-buttons {{
+                            display: flex;
+                            flex-direction: column;
+                            min-width: 150px;
+                        }}
+                        select {{
+                            padding: 3px;
+                        }}
+                        .option-style {{
+                            padding: 2px;
+                        }}
+                        .scatter-plot {{
+                            display: none;
+                        }}
+                    </style>
+                    <script>
+                        function showPlot(plotId) {{
+                            var plots = document.getElementsByClassName('scatter-plot');
+                            for (var i = 0; i < plots.length; i++) {{
+                                plots[i].style.display = 'none';
+                            }}
+                            document.getElementById(plotId).style.display = 'block';
+                        }}
 
-        # Add radio buttons for each scatter plot
-        for i, (factor,scatter_html) in enumerate(scatter_html_blocks):
-            plot_id = f"plot_{i}"
-            checked_attr = 'checked' if i == 0 else ''
-            f.write(f"""
-                <label>
-                    <input type="radio" name="scatter" onclick="showPlot('{plot_id}')" {checked_attr}>
-                    {factor.replace("_", " ").title()}
-                </label>
+                        function toggleCountries() {{
+                            const selection = document.getElementById("filter-select").value;
+                            const withCHN = document.getElementsByClassName('with-china-india');
+                            const withoutCHN = document.getElementsByClassName('without-china-india');
+
+                            if (selection === 'with_china_india') {{
+                                for (let i = 0; i < withCHN.length; i++) {{
+                                    withCHN[i].style.display = (i === 0) ? 'block' : 'none';
+                                }}
+                                for (let i = 0; i < withoutCHN.length; i++) {{
+                                    withoutCHN[i].style.display = 'none';
+                                }}
+                            }} else {{
+                                for (let i = 0; i < withoutCHN.length; i++) {{
+                                    withoutCHN[i].style.display = (i === 0) ? 'block' : 'none';
+                                }}
+                                for (let i = 0; i < withCHN.length; i++) {{
+                                    withCHN[i].style.display = 'none';
+                                }}
+                            }}
+                        }}
+                    </script>
+                </head>
+                <body>
+                    <h2 style="text-align:center; margin:20px;">Air Pollution Deaths by Country</h2>
+                    {choropleth_map}
+                    <hr style="width:80%"/>
+                    <h2 style="text-align:center;">Scatter Plots</h2>
+                    <div class="container">
+                        <div class="radio-buttons">
             """)
 
-        f.write("""
-               <div class="option-container">
-                                <br />
-                                <label for="filter-select">Outlier Removal Option:</label>
-                                <select id="filter-select" onchange="showScatterPlot()">
-                                    <option class="option-style" value="with_china_india" selected>Include CHN & IND</option>
-                                    <option class="option-style" value="without_china_india">Exclude CHN & IND</option>
-                                </select>
-                            </div>
+            # Add radio buttons for each scatter plot
+            for i, (factor, scatter_html) in enumerate(scatter_html_blocks):
+                plot_id_with = f"plot_with_{i}"
+                plot_id_without = f"plot_without_{i}"
+                checked_attr = 'checked' if i == 0 else ''
+                f.write(f"""
+                    <label>
+                        <input type="radio" name="scatter" onclick="showPlot('{plot_id_with}')" {checked_attr}>
+                        {factor.replace("_", " ").title()}
+                    </label>
+                """)
+
+            f.write("""
+                <div class="option-container">
+                        <br />
+                        <label for="filter-select">Outlier Removal Option:</label>
+                        <select id="filter-select" onchange="toggleCountries()">
+                            <option class="option-style" value="with_china_india" selected>Include CHN & IND</option>
+                            <option class="option-style" value="without_china_india">Exclude CHN & IND</option>
+                        </select>
+                    </div>
                 </div> <!-- End of radio-buttons -->
-        """)
-
-        # Display scatter plots (only the first one visible initially)
-        for i, (factor,scatter_html) in enumerate(scatter_html_blocks):
-            plot_id = f"plot_{i}"
-            display_style = "block" if i == 0 else "none"
-            f.write(f"""
-                <div id="{plot_id}" class="scatter-plot" style="display: {display_style};">
-                    {scatter_html}
-                </div>
             """)
 
-        f.write(f"""
-                </div>  
-                <div></div>
-                <hr class="width:80%"/>
-                <div style="text-align: center; margin:50px;">
-                    <h2>Adjusted R² Score</h2>
-                    <p>
-                        Train R²: <strong>{train_r2:.4f}</strong><br />
-                        Test R²: <strong>{test_r2:.4f}</strong>
-                    </p>
-                </div>
-                <div></div>
-                <hr class="width:80%"/>
-                <div>
-                    <h2 style="text-align:center;">SHAP Beeswarm Plot</h2>
-                    <img src="./beeswarm_plot.png" alt="SHAP Beeswarm Plot" style="width:80%; height:auto;">
-                </div>
-            </body>
-        </html>
-        """)
+            # Display scatter plots WITH CHN & IND
+            for i, (factor, scatter_html) in enumerate(scatter_html_blocks):
+                plot_id = f"plot_with_{i}"
+                display_style = "block" if i == 0 else "none"
+                f.write(f"""
+                    <div id="{plot_id}" class="scatter-plot with-china-india" style="display: {display_style};">
+                        {scatter_html}
+                    </div>
+                """)
 
+            # Display scatter plots WITHOUT CHN & IND (hidden initially)
+            for i, (factor, scatter_html) in enumerate(scatter_html_blocks_without_chn_ind):
+                plot_id = f"plot_without_{i}"
+                f.write(f"""
+                    <div id="{plot_id}" class="scatter-plot without-china-india" style="display: none;">
+                        {scatter_html}
+                    </div>
+                """)
+
+            f.write(f"""
+                    </div>
+                    <hr style="width:80%"/>
+                    <div style="text-align: center; margin:50px;">
+                        <h2>Adjusted R² Score</h2>
+                        <p>
+                            Train R²: <strong>{train_r2:.4f}</strong><br />
+                            Test R²: <strong>{test_r2:.4f}</strong>
+                        </p>
+                    </div>
+                    <hr style="width:80%"/>
+                    <div>
+                        <h2 style="text-align:center;">SHAP Beeswarm Plot</h2>
+                        <img src="./beeswarm_plot.png" alt="SHAP Beeswarm Plot" style="width:80%; height:auto;">
+                    </div>
+                </body>
+            </html>
+            """)
+
+    
 if __name__ == "__main__":
     print("Calling start_predict_xgboost()...")
     start_predict_xgboost()
