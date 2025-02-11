@@ -1,4 +1,3 @@
-import dash
 from dash import dcc, html
 from dash.dependencies import Input, Output
 import plotly.express as px
@@ -189,32 +188,27 @@ def process_environment_and_socioeconomic_data(env_data, socio_data, common_coun
     return environment_results, socioeconomic_results
 
 def merge_environment_socioeconomic_air_pollution_data(environment_results, socioeconomic_results, air_pollution_df):
-    # **(A) Merge environment_data and socioeconomic_data on common country codes**
-    # environment_data_combined = pd.concat(environment_results, ignore_index=True)
-    # socioeconomic_data_combined = pd.concat(socioeconomic_results, ignore_index=True)
-
+    # **(A) Merge environmental data**
     environment_data_combined = environment_results[0]
-    for i in environment_results[1:]:
-        environment_data_combined = pd.merge(environment_data_combined,i,on="Country Code", how="outer")
-    
-    merge_final = environment_data_combined
-    
-    for i in socioeconomic_results:
-        socioeconomic_data_combined = pd.merge(merge_final,i,on="Country Code", how="outer")
+    for env_df in environment_results[1:]:
+        environment_data_combined = pd.merge(environment_data_combined, env_df, on="Country Code", how="outer")
 
+    # **(B) Merge socioeconomic data**
+    socioeconomic_data_combined = socioeconomic_results[0]
+    for socio_df in socioeconomic_results[1:]:
+        socioeconomic_data_combined = pd.merge(socioeconomic_data_combined, socio_df, on="Country Code", how="outer")
 
-    # Merge environment and socioeconomic data on 'Country Code'
-    # merged_env_socio_data = pd.merge(environment_data_combined, socioeconomic_data_combined, on="Country Code", how="outer")
-    
-    # **(B) Aggregate air pollution deaths per country**
+    # **(C) Merge environmental and socioeconomic data**
+    merged_env_socio_data = pd.merge(environment_data_combined, socioeconomic_data_combined, on="Country Code", how="outer")
+
+    # **(D) Aggregate air pollution deaths per country**
     air_pollution_agg = air_pollution_df.groupby("SpatialDimValueCode", as_index=False)["FactValueNumeric"].sum()
     air_pollution_agg.rename(columns={"SpatialDimValueCode": "Country Code"}, inplace=True)
 
-    # **(C) Merge aggregated air pollution data**
-    merged_data_with_deaths = pd.merge(merge_final, air_pollution_agg, 
-                                       on='Country Code', how='outer')
+    # **(E) Merge with aggregated air pollution data**
+    merged_data_with_deaths = pd.merge(merged_env_socio_data, air_pollution_agg, on='Country Code', how='outer')
 
-    # Rename columns to meaningful names
+    # **(F) Rename columns to meaningful names**
     merged_data_with_deaths.rename(columns={
         'name_x': 'environmental_value',
         'name_y': 'socioeconomic_value',
@@ -251,19 +245,19 @@ def start_predict_xgboost():
 
         print("Processing environment and socioeconomic data...")
         environment_results, socioeconomic_results = process_environment_and_socioeconomic_data(env_data, socio_data, common_country_codes)
+        
+        # print("socioeconomic_results->>>>>>>>>>>>>>>\n",socioeconomic_results)
 
         # **Merge environment, socioeconomic, and air pollution data**
         print("Merging environment, socioeconomic, and air pollution data...")
         merged_data = merge_environment_socioeconomic_air_pollution_data(environment_results, socioeconomic_results, air_pollution_df)
-        merged_data = merged_data[merged_data['Country Code'] != 'CHN']
-        merged_data = merged_data[merged_data['Country Code'] != 'IND']
-        # Rename the columns to more meaningful names
-        # merged_data.rename(columns={
-        #     'name_x': 'environmental_value',
-        #     'name_y': 'socioeconomic_value',
-        #     'SpatialDimValueCode': 'Country Code',
-        #     'Value': 'air_pollution_deaths'  # Assuming 'Value' represents the air pollution deaths
-        # }, inplace=True)
+        # CHN and IND should be optional it can be toogled from include and exclude
+        # merged_data = merged_data[merged_data['Country Code'] != 'CHN']
+        # merged_data = merged_data[merged_data['Country Code'] != 'IND']
+
+        # if exclude_countries:
+            # merged_data = merged_data[~merged_data['Country Code'].isin(['CHN', 'IND'])]
+
 
         print(f"Merged data has {merged_data.shape[0]} rows and {merged_data.shape[1]} columns.")
         print(merged_data)  # Optional: Check the first few rows of the merged dataframe
@@ -295,14 +289,14 @@ def train_model(df):
     X_test = pd.DataFrame(scaler.transform(X_test), columns=X_test.columns)
 
     xgb_model = xgb.XGBRegressor(
-        subsample=0.2,
-        colsample_bytree=0.7,
+        subsample=0.7,
+        colsample_bytree=0.5,
         reg_alpha=10,
         reg_lambda=10,
         random_state=random_seed,
-        n_estimators=199,
-        learning_rate=0.066,
-        max_depth=4,
+        n_estimators=256,
+        learning_rate=0.3,
+        max_depth=2,
         predictor='cpu_predictor'
     )
 
@@ -323,63 +317,186 @@ def generate_beeswarm_plot(model, X_train_val):
 
 
 def generate_html_file(merged_data, train_r2, test_r2):
+    merged_data['Country Code'] = merged_data['Country Code'].str.strip()  # Ensure clean data
+    
     factors = [col for col in merged_data.columns if col not in ['Country Code', 'FactValueNumeric']]
-    scatter_html_blocks = []
+    data_without_chn_ind = merged_data[~merged_data['Country Code'].isin(['CHN', 'IND'])]
+
+    scatter_html_blocks = []                      # For all countries
+    scatter_html_blocks_without_chn_ind = []      # Excluding CHN and IND
 
     for factor in factors:
-        fig = px.scatter(
+        # Scatter plots with CHN & IND
+        correlation_all = merged_data['FactValueNumeric'].corr(merged_data[factor])
+        fig_all = px.scatter(
             merged_data,
             x=factor,
             y='FactValueNumeric',
-            color='Country Code',
-            title=f"Air Pollution Deaths vs {factor}",
+            text="Country Code",
+            title=f"Air Pollution Deaths vs {factor.replace('_', ' ').title()} (Corr: {round(correlation_all, 2)})",
             labels={'FactValueNumeric': 'Air Pollution Deaths'}
         )
-        scatter_html_blocks.append(fig.to_html(full_html=False))
+        scatter_html_blocks.append((factor, fig_all.to_html(full_html=False)))
 
-    choropleth_map = px.choropleth(
-        merged_data,
-        locations="Country Code",
-        color="FactValueNumeric",
-        hover_data={"Country Code": True, "FactValueNumeric": True},
-        color_continuous_scale=px.colors.sequential.Plasma,
-        title="Global Air Pollution Deaths",
-            labels={"FactValueNumeric": "Air Pollution Deaths"}  # Add label here
-    ).to_html(full_html=False)
+        # Scatter plots without CHN & IND
+        correlation_without = data_without_chn_ind['FactValueNumeric'].corr(data_without_chn_ind[factor])
+        fig_without = px.scatter(
+            data_without_chn_ind,
+            x=factor,
+            y='FactValueNumeric',
+            text="Country Code",
+            title=f"Air Pollution Deaths vs {factor.replace('_', ' ').title()} (Excl. CHN & IND, Corr: {round(correlation_without, 2)})",
+            labels={'FactValueNumeric': 'Air Pollution Deaths'}
+        )
+        scatter_html_blocks_without_chn_ind.append((factor, fig_without.to_html(full_html=False)))
 
-    with open("coding_test_output.html", "w", encoding="utf-8") as f:
-        f.write(f"""
-        <html>
-            <head>
-                <title>Air Pollution and Emissions Analysis</title>
-            </head>
-            <body>
-                <h1>Air Pollution Deaths by Country</h1>
-                <h2>Scatter Plots</h2>
-        """)
+        choropleth_map = px.choropleth(
+            merged_data,
+            locations="Country Code",
+            color="FactValueNumeric",
+            hover_data={"Country Code": True, "FactValueNumeric": True},
+            color_continuous_scale=px.colors.sequential.Reds,
+            title="Global Air Pollution Deaths",
+                labels={"FactValueNumeric": "Air Pollution Deaths"}  # Add label here
+        ).to_html(full_html=False)
 
-        for scatter_html in scatter_html_blocks:
-            f.write(scatter_html)
+        with open("coding_test_output.html", "w", encoding="utf-8") as f:
+            f.write(f"""
+            <!DOCTYPE html>
+            <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <title>Air Pollution and Emissions Analysis</title>
+                    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+                    <style>
+                        body {{
+                            font-family: 'Montserrat', sans-serif;
+                        }}
+                        .container {{
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-around;
+                            gap: 20px;
+                        }}
+                        .radio-buttons {{
+                            display: flex;
+                            flex-direction: column;
+                            min-width: 150px;
+                        }}
+                        select {{
+                            padding: 3px;
+                        }}
+                        .option-style {{
+                            padding: 2px;
+                        }}
+                        .scatter-plot {{
+                            display: none;
+                        }}
+                    </style>
+                    <script>
+                        function showPlot(plotId) {{
+                            var plots = document.getElementsByClassName('scatter-plot');
+                            for (var i = 0; i < plots.length; i++) {{
+                                plots[i].style.display = 'none';
+                            }}
+                            document.getElementById(plotId).style.display = 'block';
+                        }}
 
-        f.write(f"""
-                <h2>Choropleth Map</h2>
-                {choropleth_map}
-                <div style="text-align: center;">
-                    <h2>Adjusted R² Score</h2>
-                    <p>
-                        Train R²: <strong>{train_r2:.4f}</strong><br />
-                        Test R²: <strong>{test_r2:.4f}</strong>
-                    </p>
-                </div>
+                        function toggleCountries() {{
+                            const selection = document.getElementById("filter-select").value;
+                            const withCHN = document.getElementsByClassName('with-china-india');
+                            const withoutCHN = document.getElementsByClassName('without-china-india');
 
-                <div>
-                    <h2>SHAP Beeswarm Plot</h2>
-                    <img src="./beeswarm_plot.png" alt="SHAP Beeswarm Plot" style="width:80%; height:auto;">
-                </div>
-            </body>
-        </html>
-        """)
+                            if (selection === 'with_china_india') {{
+                                for (let i = 0; i < withCHN.length; i++) {{
+                                    withCHN[i].style.display = (i === 0) ? 'block' : 'none';
+                                }}
+                                for (let i = 0; i < withoutCHN.length; i++) {{
+                                    withoutCHN[i].style.display = 'none';
+                                }}
+                            }} else {{
+                                for (let i = 0; i < withoutCHN.length; i++) {{
+                                    withoutCHN[i].style.display = (i === 0) ? 'block' : 'none';
+                                }}
+                                for (let i = 0; i < withCHN.length; i++) {{
+                                    withCHN[i].style.display = 'none';
+                                }}
+                            }}
+                        }}
+                    </script>
+                </head>
+                <body>
+                    <h2 style="text-align:center; margin:20px;">Air Pollution Deaths by Country</h2>
+                    {choropleth_map}
+                    <hr style="width:80%"/>
+                    <h2 style="text-align:center;">Scatter Plots</h2>
+                    <div class="container">
+                        <div class="radio-buttons">
+            """)
 
+            # Add radio buttons for each scatter plot
+            for i, (factor, scatter_html) in enumerate(scatter_html_blocks):
+                plot_id_with = f"plot_with_{i}"
+                plot_id_without = f"plot_without_{i}"
+                checked_attr = 'checked' if i == 0 else ''
+                f.write(f"""
+                    <label>
+                        <input type="radio" name="scatter" onclick="showPlot('{plot_id_with}')" {checked_attr}>
+                        {factor.replace("_", " ").title()}
+                    </label>
+                """)
+
+            f.write("""
+                <div class="option-container">
+                        <br />
+                        <label for="filter-select">Outlier Removal Option:</label>
+                        <select id="filter-select" onchange="toggleCountries()">
+                            <option class="option-style" value="with_china_india" selected>Include CHN & IND</option>
+                            <option class="option-style" value="without_china_india">Exclude CHN & IND</option>
+                        </select>
+                    </div>
+                </div> <!-- End of radio-buttons -->
+            """)
+
+            # Display scatter plots WITH CHN & IND
+            for i, (factor, scatter_html) in enumerate(scatter_html_blocks):
+                plot_id = f"plot_with_{i}"
+                display_style = "block" if i == 0 else "none"
+                f.write(f"""
+                    <div id="{plot_id}" class="scatter-plot with-china-india" style="display: {display_style};">
+                        {scatter_html}
+                    </div>
+                """)
+
+            # Display scatter plots WITHOUT CHN & IND (hidden initially)
+            for i, (factor, scatter_html) in enumerate(scatter_html_blocks_without_chn_ind):
+                plot_id = f"plot_without_{i}"
+                f.write(f"""
+                    <div id="{plot_id}" class="scatter-plot without-china-india" style="display: none;">
+                        {scatter_html}
+                    </div>
+                """)
+
+            f.write(f"""
+                    </div>
+                    <hr style="width:80%"/>
+                    <div style="text-align: center; margin:50px;">
+                        <h2>Adjusted R² Score</h2>
+                        <p>
+                            Train R²: <strong>{train_r2:.4f}</strong><br />
+                            Test R²: <strong>{test_r2:.4f}</strong>
+                        </p>
+                    </div>
+                    <hr style="width:80%"/>
+                    <div>
+                        <h2 style="text-align:center;">SHAP Beeswarm Plot</h2>
+                        <img src="./beeswarm_plot.png" alt="SHAP Beeswarm Plot" style="width:80%; height:auto;">
+                    </div>
+                </body>
+            </html>
+            """)
+
+    
 if __name__ == "__main__":
     print("Calling start_predict_xgboost()...")
     start_predict_xgboost()
