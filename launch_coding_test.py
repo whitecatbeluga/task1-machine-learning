@@ -343,7 +343,7 @@ def generate_html_file(merged_data, train_r2, test_r2):
         locations="Country Code",
         color="FactValueNumeric",
         hover_data={"Country Code": True, "FactValueNumeric": True},
-        color_continuous_scale=px.colors.sequential.Plasma,
+        color_continuous_scale=px.colors.sequential.Reds,
         title="Global Air Pollution Deaths",
             labels={"FactValueNumeric": "Air Pollution Deaths"}  # Add label here
     ).to_html(full_html=False)
@@ -353,10 +353,15 @@ def generate_html_file(merged_data, train_r2, test_r2):
         <html>
             <head>
                 <title>Air Pollution and Emissions Analysis</title>
+                <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
                 <style>
+                    body {{
+                        font-family: 'Montserrat', sans-serif;
+                    }}
                     .container {{
                         display: flex;
-                        align-items: flex-start;
+                        align-items: center;
+                        justify-content: space-around;
                         gap: 20px;
                     }}
                     .radio-buttons {{
@@ -364,9 +369,9 @@ def generate_html_file(merged_data, train_r2, test_r2):
                         flex-direction: column;
                         min-width: 150px;
                     }}
-                    .scatter-plot {{
-                        min-width: 600px; /* Adjust as needed */
-                    }}
+                    # .scatter-plot {{
+                    #     min-width: 600px; /* Adjust as needed */
+                    # }}
                 </style>
                 <script>
                     function showPlot(plotId) {{
@@ -379,11 +384,11 @@ def generate_html_file(merged_data, train_r2, test_r2):
                 </script>
             </head>
             <body>
-                <h2>Choropleth Map</h2>
+                <h2 style="text-align:center; margin:20px;">Air Pollution Deaths by Country</h2>
                 {choropleth_map}
-                <h1>Air Pollution Deaths by Country</h1>
-                <h2>Scatter Plots</h2>
-
+                <div></div>
+                <hr class="width:80%"/>
+                <h2 style="text-align:center;">Scatter Plots</h2>
                 <div class="container">
                     <div class="radio-buttons">
         """)
@@ -395,13 +400,12 @@ def generate_html_file(merged_data, train_r2, test_r2):
             f.write(f"""
                 <label>
                     <input type="radio" name="scatter" onclick="showPlot('{plot_id}')" {checked_attr}>
-                    {factor}
+                    {factor.replace("_", " ").title()}
                 </label>
             """)
 
         f.write("""
                     </div> <!-- End of radio-buttons -->
-                    <div>
         """)
 
         # Display scatter plots (only the first one visible initially)
@@ -415,17 +419,20 @@ def generate_html_file(merged_data, train_r2, test_r2):
             """)
 
         f.write(f"""
-              
-                <div style="text-align: center;">
+                </div>  
+                <div></div>
+                <hr class="width:80%"/>
+                <div style="text-align: center; margin:50px;">
                     <h2>Adjusted R² Score</h2>
                     <p>
                         Train R²: <strong>{train_r2:.4f}</strong><br />
                         Test R²: <strong>{test_r2:.4f}</strong>
                     </p>
                 </div>
-
+                <div></div>
+                <hr class="width:80%"/>
                 <div>
-                    <h2>SHAP Beeswarm Plot</h2>
+                    <h2 style="text-align:center;">SHAP Beeswarm Plot</h2>
                     <img src="./beeswarm_plot.png" alt="SHAP Beeswarm Plot" style="width:80%; height:auto;">
                 </div>
             </body>
