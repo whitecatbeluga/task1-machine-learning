@@ -1,3 +1,4 @@
+import sys
 import dash
 from dash import dcc, html
 from dash.dependencies import Input, Output
@@ -189,32 +190,27 @@ def process_environment_and_socioeconomic_data(env_data, socio_data, common_coun
     return environment_results, socioeconomic_results
 
 def merge_environment_socioeconomic_air_pollution_data(environment_results, socioeconomic_results, air_pollution_df):
-    # **(A) Merge environment_data and socioeconomic_data on common country codes**
-    # environment_data_combined = pd.concat(environment_results, ignore_index=True)
-    # socioeconomic_data_combined = pd.concat(socioeconomic_results, ignore_index=True)
-
+    # **(A) Merge environmental data**
     environment_data_combined = environment_results[0]
-    for i in environment_results[1:]:
-        environment_data_combined = pd.merge(environment_data_combined,i,on="Country Code", how="outer")
-    
-    merge_final = environment_data_combined
-    
-    for i in socioeconomic_results:
-        socioeconomic_data_combined = pd.merge(merge_final,i,on="Country Code", how="outer")
+    for env_df in environment_results[1:]:
+        environment_data_combined = pd.merge(environment_data_combined, env_df, on="Country Code", how="outer")
 
+    # **(B) Merge socioeconomic data**
+    socioeconomic_data_combined = socioeconomic_results[0]
+    for socio_df in socioeconomic_results[1:]:
+        socioeconomic_data_combined = pd.merge(socioeconomic_data_combined, socio_df, on="Country Code", how="outer")
 
-    # Merge environment and socioeconomic data on 'Country Code'
-    # merged_env_socio_data = pd.merge(environment_data_combined, socioeconomic_data_combined, on="Country Code", how="outer")
-    
-    # **(B) Aggregate air pollution deaths per country**
+    # **(C) Merge environmental and socioeconomic data**
+    merged_env_socio_data = pd.merge(environment_data_combined, socioeconomic_data_combined, on="Country Code", how="outer")
+
+    # **(D) Aggregate air pollution deaths per country**
     air_pollution_agg = air_pollution_df.groupby("SpatialDimValueCode", as_index=False)["FactValueNumeric"].sum()
     air_pollution_agg.rename(columns={"SpatialDimValueCode": "Country Code"}, inplace=True)
 
-    # **(C) Merge aggregated air pollution data**
-    merged_data_with_deaths = pd.merge(merge_final, air_pollution_agg, 
-                                       on='Country Code', how='outer')
+    # **(E) Merge with aggregated air pollution data**
+    merged_data_with_deaths = pd.merge(merged_env_socio_data, air_pollution_agg, on='Country Code', how='outer')
 
-    # Rename columns to meaningful names
+    # **(F) Rename columns to meaningful names**
     merged_data_with_deaths.rename(columns={
         'name_x': 'environmental_value',
         'name_y': 'socioeconomic_value',
@@ -228,6 +224,14 @@ def start_predict_xgboost():
         random_seed = 42
         np.random.seed(random_seed)
         random.seed(random_seed)
+
+        exclude_countries = True
+
+
+        if len(sys.argv) > 1 and 'exclude=true' in sys.argv[1]:
+            exclude_countries = True
+
+        print("exclude_countries",exclude_countries)
 
         print("Defining files...")
         files = define_files()
@@ -251,19 +255,19 @@ def start_predict_xgboost():
 
         print("Processing environment and socioeconomic data...")
         environment_results, socioeconomic_results = process_environment_and_socioeconomic_data(env_data, socio_data, common_country_codes)
+        
+        # print("socioeconomic_results->>>>>>>>>>>>>>>\n",socioeconomic_results)
 
         # **Merge environment, socioeconomic, and air pollution data**
         print("Merging environment, socioeconomic, and air pollution data...")
         merged_data = merge_environment_socioeconomic_air_pollution_data(environment_results, socioeconomic_results, air_pollution_df)
-        merged_data = merged_data[merged_data['Country Code'] != 'CHN']
-        merged_data = merged_data[merged_data['Country Code'] != 'IND']
-        # Rename the columns to more meaningful names
-        # merged_data.rename(columns={
-        #     'name_x': 'environmental_value',
-        #     'name_y': 'socioeconomic_value',
-        #     'SpatialDimValueCode': 'Country Code',
-        #     'Value': 'air_pollution_deaths'  # Assuming 'Value' represents the air pollution deaths
-        # }, inplace=True)
+        # CHN and IND should be optional it can be toogled from include and exclude
+        # merged_data = merged_data[merged_data['Country Code'] != 'CHN']
+        # merged_data = merged_data[merged_data['Country Code'] != 'IND']
+
+        if exclude_countries:
+            merged_data = merged_data[~merged_data['Country Code'].isin(['CHN', 'IND'])]
+
 
         print(f"Merged data has {merged_data.shape[0]} rows and {merged_data.shape[1]} columns.")
         print(merged_data)  # Optional: Check the first few rows of the merged dataframe
@@ -295,14 +299,14 @@ def train_model(df):
     X_test = pd.DataFrame(scaler.transform(X_test), columns=X_test.columns)
 
     xgb_model = xgb.XGBRegressor(
-        subsample=0.2,
-        colsample_bytree=0.7,
+        subsample=0.7,
+        colsample_bytree=0.5,
         reg_alpha=10,
         reg_lambda=10,
         random_state=random_seed,
-        n_estimators=199,
-        learning_rate=0.066,
-        max_depth=4,
+        n_estimators=256,
+        learning_rate=0.3,
+        max_depth=2,
         predictor='cpu_predictor'
     )
 
@@ -352,6 +356,7 @@ def generate_html_file(merged_data, train_r2, test_r2):
         f.write(f"""
         <html>
             <head>
+                <meta charset="UTF-8">
                 <title>Air Pollution and Emissions Analysis</title>
                 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
                 <style>
@@ -381,6 +386,11 @@ def generate_html_file(merged_data, train_r2, test_r2):
                         }}
                         document.getElementById(plotId).style.display = 'block';
                     }}
+                    function toggleCountries() {{
+                        const exclude = document.getElementById("excludeCountries").checked;
+                        window.location.href = exclude ? "?exclude=true" : "?exclude=false";
+                    }}
+                
                 </script>
             </head>
             <body>
@@ -405,7 +415,12 @@ def generate_html_file(merged_data, train_r2, test_r2):
             """)
 
         f.write("""
-                    </div> <!-- End of radio-buttons -->
+                <div style="text-align: center; margin: 20px;">
+                    <label>
+                        <input type="checkbox" id="excludeCountries" onchange="toggleCountries()"> Exclude CHN & IND
+                    </label>
+                </div>
+                </div> <!-- End of radio-buttons -->
         """)
 
         # Display scatter plots (only the first one visible initially)
