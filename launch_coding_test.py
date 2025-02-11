@@ -372,6 +372,7 @@ def generate_html_file(merged_data, train_r2, test_r2):
 
         with open("coding_test_output.html", "w", encoding="utf-8") as f:
             f.write(f"""
+            <!DOCTYPE html>
             <html>
                 <head>
                     <meta charset="UTF-8">
