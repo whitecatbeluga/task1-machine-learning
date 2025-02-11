@@ -1,5 +1,3 @@
-import sys
-import dash
 from dash import dcc, html
 from dash.dependencies import Input, Output
 import plotly.express as px
@@ -224,14 +222,6 @@ def start_predict_xgboost():
         random_seed = 42
         np.random.seed(random_seed)
         random.seed(random_seed)
-
-        exclude_countries = True
-
-
-        if len(sys.argv) > 1 and 'exclude=true' in sys.argv[1]:
-            exclude_countries = True
-
-        print("exclude_countries",exclude_countries)
 
         print("Defining files...")
         files = define_files()
