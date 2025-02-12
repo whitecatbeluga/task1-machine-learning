@@ -443,7 +443,6 @@ def generate_html_file(merged_data, train_r2, test_r2):
                             if (selectedFactorIndex >= activeClass.length) {{
                                 selectedFactorIndex = 0; // Reset if out of bounds
                             }}
-                            
                             // Display the corresponding plot
                             if(activeClass === withoutCHN){{
                                 if(selectedFactorIndex === 0){{
@@ -452,8 +451,14 @@ def generate_html_file(merged_data, train_r2, test_r2):
                                 let new_id = selectedFactorIndex.split("_")
                                 let active_plot = "plot_without_"+new_id[new_id.length - 1];
                                 activeClass[active_plot].style.display = 'block';
+                            }}else if(activeClass === withCHN){{
+                                if(selectedFactorIndex === 0){{
+                                    selectedFactorIndex = "plot_with_"+selectedFactorIndex;
+                                }}
+                                let new_id = selectedFactorIndex.split("_")
+                                let active_plot = "plot_with_"+new_id[new_id.length - 1];
+                                activeClass[active_plot].style.display = 'block';
                             }}
-                            
                             if (activeClass[selectedFactorIndex]) {{
                                 activeClass[selectedFactorIndex].style.display = 'block';
                             }}
