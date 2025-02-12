@@ -1,5 +1,3 @@
-from dash import dcc, html
-from dash.dependencies import Input, Output
 import plotly.express as px
 
 import pandas as pd
@@ -10,7 +8,6 @@ import plotly.express as px
 import xgboost as xgb
 import shap
 import plotly.express as px
-import plotly.graph_objects as go
 
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
@@ -387,8 +384,7 @@ def generate_html_file(merged_data, train_r2, test_r2):
             color="FactValueNumeric",
             hover_data={"Country Code": True, "FactValueNumeric": True},
             color_continuous_scale=px.colors.sequential.Reds,
-            title="Global Air Pollution Deaths",
-                labels={"FactValueNumeric": "Air Pollution Deaths"}  # Add label here
+            labels={"FactValueNumeric": "Air Pollution Deaths"}  # Add label here
         ).to_html(full_html=False)
 
         with open("coding_test_output.html", "w", encoding="utf-8") as f:
