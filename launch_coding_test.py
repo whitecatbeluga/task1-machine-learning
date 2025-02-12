@@ -394,34 +394,42 @@ def generate_html_file(merged_data, train_r2, test_r2):
                         }}
                     </style>
                     <script>
-                        function showPlot(plotId) {{
-                            var plots = document.getElementsByClassName('scatter-plot');
-                            for (var i = 0; i < plots.length; i++) {{
-                                plots[i].style.display = 'none';
+                        let selectedFactorIndex = 0; // Track the selected factor
+
+                        function showPlot(factorIndex) {{
+                            selectedFactorIndex = factorIndex;
+                            const withCHN = document.getElementsByClassName('with-china-india');
+                            const withoutCHN = document.getElementsByClassName('without-china-india');
+                            const selection = document.getElementById("filter-select").value;
+
+                            // Hide all plots
+                            for (let plot of withCHN) plot.style.display = 'none';
+                            for (let plot of withoutCHN) plot.style.display = 'none';
+
+                            // Determine active dataset
+                            const activeClass = selection === 'with_china_india' ? withCHN : withoutCHN;
+                            // Ensure selectedFactorIndex is within bounds
+                            if (selectedFactorIndex >= activeClass.length) {{
+                                selectedFactorIndex = 0; // Reset if out of bounds
                             }}
-                            document.getElementById(plotId).style.display = 'block';
+                            
+                            // Display the corresponding plot
+                            if(activeClass === withoutCHN){{
+                                if(selectedFactorIndex === 0){{
+                                    selectedFactorIndex = "plot_without_"+selectedFactorIndex;
+                                }}
+                                let new_id = selectedFactorIndex.split("_")
+                                let active_plot = "plot_without_"+new_id[new_id.length - 1];
+                                activeClass[active_plot].style.display = 'block';
+                            }}
+                            
+                            if (activeClass[selectedFactorIndex]) {{
+                                activeClass[selectedFactorIndex].style.display = 'block';
+                            }}
                         }}
 
                         function toggleCountries() {{
-                            const selection = document.getElementById("filter-select").value;
-                            const withCHN = document.getElementsByClassName('with-china-india');
-                            const withoutCHN = document.getElementsByClassName('without-china-india');
-
-                            if (selection === 'with_china_india') {{
-                                for (let i = 0; i < withCHN.length; i++) {{
-                                    withCHN[i].style.display = (i === 0) ? 'block' : 'none';
-                                }}
-                                for (let i = 0; i < withoutCHN.length; i++) {{
-                                    withoutCHN[i].style.display = 'none';
-                                }}
-                            }} else {{
-                                for (let i = 0; i < withoutCHN.length; i++) {{
-                                    withoutCHN[i].style.display = (i === 0) ? 'block' : 'none';
-                                }}
-                                for (let i = 0; i < withCHN.length; i++) {{
-                                    withCHN[i].style.display = 'none';
-                                }}
-                            }}
+                            showPlot(selectedFactorIndex); // Maintain the same factor when toggling
                         }}
                     </script>
                 </head>
