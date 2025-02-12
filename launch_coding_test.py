@@ -291,14 +291,14 @@ def train_model(df):
     X_test = pd.DataFrame(scaler.transform(X_test), columns=X_test.columns)
 
     xgb_model = xgb.XGBRegressor(
-        subsample=0.7,
-        colsample_bytree=0.7,
-        reg_alpha=1,
-        reg_lambda=1,
+        subsample=0.4,
+        colsample_bytree=0.9,
+        reg_alpha=5,
+        reg_lambda=0.5,
         random_state=random_seed,
-        n_estimators=200,
-        learning_rate=0.04,
-        max_depth=4,
+        n_estimators=500,
+        learning_rate=0.03,
+        max_depth=3,
         predictor='cpu_predictor'
     )
 
