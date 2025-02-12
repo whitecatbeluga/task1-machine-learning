@@ -251,9 +251,10 @@ def start_predict_xgboost():
         # **Merge environment, socioeconomic, and air pollution data**
         print("Merging environment, socioeconomic, and air pollution data...")
         merged_data = merge_environment_socioeconomic_air_pollution_data(environment_results, socioeconomic_results, air_pollution_df)
+        merged_data_with_outliers = merge_environment_socioeconomic_air_pollution_data(environment_results, socioeconomic_results, air_pollution_df)
         # CHN and IND should be optional it can be toogled from include and exclude
-        # merged_data = merged_data[merged_data['Country Code'] != 'CHN']
-        # merged_data = merged_data[merged_data['Country Code'] != 'IND']
+        merged_data_with_outliers = merged_data_with_outliers[merged_data_with_outliers['Country Code'] != 'CHN']
+        merged_data_with_outliers = merged_data_with_outliers[merged_data_with_outliers['Country Code'] != 'IND']
 
         # if exclude_countries:
             # merged_data = merged_data[~merged_data['Country Code'].isin(['CHN', 'IND'])]
@@ -263,16 +264,17 @@ def start_predict_xgboost():
         print(merged_data)  # Optional: Check the first few rows of the merged dataframe
 
         model, X_train_val, y_train_val, train_r2, test_r2 = train_model(merged_data)
+        model_with, X_train_val_with, y_train_val_with, train_r2_with, test_r2_with = train_model(merged_data_with_outliers)
 
         generate_beeswarm_plot(model, X_train_val)
         
-        generate_html_file(merged_data, train_r2, test_r2)
+        generate_html_file(merged_data, train_r2_with, test_r2_with)
 
-        if merged_data is None or merged_data.empty:
-            print("ERROR: merged_data is empty or not defined.")
-        else:
-            merged_data.to_csv("merged_data.csv", index=False)
-            print("merged_data.csv saved successfully!")
+        # if merged_data is None or merged_data.empty:
+        #     print("ERROR: merged_data is empty or not defined.")
+        # else:
+        #     merged_data.to_csv("merged_data.csv", index=False)
+        #     print("merged_data.csv saved successfully!")
 
     # except Exception as e:
     #     print("An error occurred:", e)
@@ -290,13 +292,13 @@ def train_model(df):
 
     xgb_model = xgb.XGBRegressor(
         subsample=0.7,
-        colsample_bytree=0.5,
-        reg_alpha=10,
-        reg_lambda=10,
+        colsample_bytree=0.7,
+        reg_alpha=1,
+        reg_lambda=1,
         random_state=random_seed,
-        n_estimators=256,
-        learning_rate=0.3,
-        max_depth=2,
+        n_estimators=200,
+        learning_rate=0.04,
+        max_depth=4,
         predictor='cpu_predictor'
     )
 
@@ -445,7 +447,7 @@ def generate_html_file(merged_data, train_r2, test_r2):
             # Add radio buttons for each scatter plot
             for i, (factor, scatter_html) in enumerate(scatter_html_blocks):
                 plot_id_with = f"plot_with_{i}"
-                plot_id_without = f"plot_without_{i}"
+                # plot_id_without = f"plot_without_{i}"
                 checked_attr = 'checked' if i == 0 else ''
                 f.write(f"""
                     <label>
