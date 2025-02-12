@@ -266,10 +266,11 @@ def start_predict_xgboost():
         model, X_train_val, y_train_val, train_r2, test_r2 = train_model(merged_data)
         model_with, X_train_val_with, y_train_val_with, train_r2_with, test_r2_with = train_model(merged_data_with_outliers)
 
-        generate_beeswarm_plot(model, X_train_val)
+        generate_beeswarm_plot(model_with, X_train_val_with)
         
         generate_html_file(merged_data, train_r2_with, test_r2_with)
 
+        # Generate merge data
         # if merged_data is None or merged_data.empty:
         #     print("ERROR: merged_data is empty or not defined.")
         # else:
@@ -291,14 +292,14 @@ def train_model(df):
     X_test = pd.DataFrame(scaler.transform(X_test), columns=X_test.columns)
 
     xgb_model = xgb.XGBRegressor(
-        subsample=0.4,
-        colsample_bytree=0.9,
-        reg_alpha=5,
-        reg_lambda=0.5,
+        subsample=0.7,
+        colsample_bytree=0.5,
+        reg_alpha=0.1,
+        reg_lambda=0.011,
         random_state=random_seed,
         n_estimators=500,
-        learning_rate=0.03,
-        max_depth=3,
+        learning_rate=0.055,
+        max_depth=2,
         predictor='cpu_predictor'
     )
 
@@ -308,6 +309,28 @@ def train_model(df):
 
     print(f'Train R^2 Score: {train_r2}')
     print(f'Test R^2 Score: {test_r2}')
+    
+    # # Get feature importance using "gain"
+    # importance = xgb_model.get_booster().get_score(importance_type="gain")
+    # # Convert importance dictionary to DataFrame
+    # importance_df = pd.DataFrame.from_dict(importance, orient='index', columns=['Gain'])
+    # importance_df.sort_values(by='Gain', ascending=False, inplace=True)  # Sort for better visualization
+
+    # # Rename index with actual feature names if needed
+    # importance_df.index = X_train_val.columns  # Ensure this aligns correctly
+
+    # # Plotting the bar chart
+    # plt.figure(figsize=(10, 6))
+    # importance_df.plot(kind='bar', legend=False, color='skyblue')
+    # plt.title('Feature Importance (Gain)', fontsize=14)
+    # plt.ylabel('Gain')
+    # plt.xlabel('Features')
+    # plt.xticks(rotation=45, ha='right')  # Rotate x-axis labels for better readability
+    # plt.tight_layout()
+
+    # # Saving the plot as an image
+    # plt.savefig('feature_importance_gain.png', dpi=300)
+    # plt.show()
 
     return xgb_model, X_train_val, y_train_val, train_r2, test_r2
 
