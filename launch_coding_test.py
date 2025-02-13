@@ -1,3 +1,4 @@
+import optuna
 import plotly.express as px
 
 import pandas as pd
@@ -278,64 +279,79 @@ def start_predict_xgboost():
     #     print("An error occurred:", e)
 
 def train_model(df):
-    X = df.drop(['SpatialDimValueCode', 'Air Pollution Deaths','FactValueNumeric'], axis=1, errors='ignore')
+    # Prepare dataset
+    X = df.drop(['SpatialDimValueCode', 'Air Pollution Deaths', 'FactValueNumeric'], axis=1, errors='ignore')
     X = X.select_dtypes(include=[np.number])
     y = df['FactValueNumeric'].astype(float)
 
+    # Train-Test Split
     X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.2, random_state=random_seed)
 
+    # Standardize features
     scaler = StandardScaler()
     X_train_val = pd.DataFrame(scaler.fit_transform(X_train_val), columns=X_train_val.columns)
     X_test = pd.DataFrame(scaler.transform(X_test), columns=X_test.columns)
 
-    xgb_model = xgb.XGBRegressor(
-        subsample=0.4,
-        colsample_bytree=0.5,
-        reg_alpha=10,
-        reg_lambda=5,
-        gamma=5,
-        random_state=random_seed,
-        n_estimators=380,
-        learning_rate=0.055,
-        min_child_weight=3,
-        # learning_rate=0.1,
-        max_depth=4,
-        early_stopping_rounds=50,
-    )
+    # Optuna optimization function
+    def objective(trial):
+        params = {
+            'n_estimators': trial.suggest_int('n_estimators', 1500, 2200, step=100),  # More boosting rounds
+            'learning_rate': trial.suggest_float('learning_rate', 0.005, 0.009, log=True),  # More precise learning
+            'max_depth': trial.suggest_int('max_depth', 6, 7),  # Balanced complexity
+            'min_child_weight': trial.suggest_int('min_child_weight', 6, 10),  # Prevent overfitting
+            'subsample': trial.suggest_float('subsample', 0.95, 1.0),  # Use more training data
+            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.95, 1.0),  # More features per tree
+            'reg_alpha': trial.suggest_float('reg_alpha', 2, 8),  # Reduce restriction
+            'reg_lambda': trial.suggest_float('reg_lambda', 2, 8),  # Reduce restriction
+            'gamma': trial.suggest_float('gamma', 1, 4),  # Allow better splits
+            'random_state': random_seed,
+            'early_stopping_rounds': 50
+        }
 
-    xgb_model.fit(
-        X_train_val,
-        y_train_val,
-        eval_set=[(X_test, y_test)],
-        verbose=True    
-    )
+        # Train XGBoost model
+        model = xgb.XGBRegressor(**params)
+        model.fit(X_train_val, y_train_val, eval_set=[(X_test, y_test)], verbose=False)
 
+        # Evaluate R^2 Score
+        test_pred = model.predict(X_test)
+        return r2_score(y_test, test_pred)
+
+    # Run Optuna Optimization
+    study = optuna.create_study(direction='maximize')
+    study.optimize(objective, n_trials=50)  # Run 50 trialsc
+
+    # Get best parameters
+    best_params = study.best_params
+    print("Best parameters found: ", best_params)
+
+    # Train final model with best parameters
+    xgb_model = xgb.XGBRegressor(**best_params)
+    xgb_model.fit(X_train_val, y_train_val, eval_set=[(X_test, y_test)], verbose=True)
+
+    # Final model evaluation
     train_r2 = r2_score(y_train_val, xgb_model.predict(X_train_val))
     test_r2 = r2_score(y_test, xgb_model.predict(X_test))
 
-    print(f'Train R^2 Score: {train_r2}')
-    print(f'Test R^2 Score: {test_r2}')
+    print(f'Final Train R^2 Score: {train_r2}')
+    print(f'Final Test R^2 Score: {test_r2}')
+
+    # results = xgb_model.evals_result()
+ 
+    # # Convert to DataFrame
+    # iterations = range(len(results['validation_0']['rmse']))  # XGBoost logs RMSE by default
+    # train_r2_list = [r2_score(y_train_val, xgb_model.predict(X_train_val, iteration_range=(0, i+1))) for i in iterations]
+    # test_r2_list = [r2_score(y_test, xgb_model.predict(X_test, iteration_range=(0, i+1))) for i in iterations]
     
-    # # Get feature importance using "gain"
-    # importance = xgb_model.get_booster().get_score(importance_type="gain")
-    # # Convert importance dictionary to DataFrame
-    # importance_df = pd.DataFrame.from_dict(importance, orient='index', columns=['Gain'])
-    # importance_df.sort_values(by='Gain', ascending=False, inplace=True)  # Sort for better visualization
-
-    # # Rename index with actual feature names if needed
-    # importance_df.index = X_train_val.columns  # Ensure this aligns correctly
-
-    # # Plotting the bar chart
-    # plt.figure(figsize=(10, 6))
-    # importance_df.plot(kind='bar', legend=False, color='skyblue')
-    # plt.title('Feature Importance (Gain)', fontsize=14)
-    # plt.ylabel('Gain')
-    # plt.xlabel('Features')
-    # plt.xticks(rotation=45, ha='right')  # Rotate x-axis labels for better readability
-    # plt.tight_layout()
-
-    # # Saving the plot as an image
-    # plt.savefig('feature_importance_gain.png', dpi=300)
+    # # Plot
+    # plt.figure(figsize=(10, 5))
+    # plt.plot(iterations, train_r2_list, label="Train R²")
+    # plt.plot(iterations, test_r2_list, label="Test R²")
+    
+    # plt.xlabel("Iteration")
+    # plt.ylabel("R² Score")
+    # plt.title("Train vs Test R² Score Over Iterations")
+    # plt.legend()
+    # plt.grid(True)
     # plt.show()
 
     return xgb_model, X_train_val, y_train_val, train_r2, test_r2
