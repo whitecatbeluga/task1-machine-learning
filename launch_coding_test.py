@@ -289,18 +289,27 @@ def train_model(df):
     X_test = pd.DataFrame(scaler.transform(X_test), columns=X_test.columns)
 
     xgb_model = xgb.XGBRegressor(
-        subsample=0.7,
+        subsample=0.4,
         colsample_bytree=0.5,
-        reg_alpha=0.1,
-        reg_lambda=0.011,
+        reg_alpha=10,
+        reg_lambda=5,
+        gamma=5,
         random_state=random_seed,
-        n_estimators=500,
+        n_estimators=380,
         learning_rate=0.055,
-        max_depth=2,
-        predictor='cpu_predictor'
+        min_child_weight=3,
+        # learning_rate=0.1,
+        max_depth=4,
+        early_stopping_rounds=50,
     )
 
-    xgb_model.fit(X_train_val, y_train_val)
+    xgb_model.fit(
+        X_train_val,
+        y_train_val,
+        eval_set=[(X_test, y_test)],
+        verbose=True    
+    )
+
     train_r2 = r2_score(y_train_val, xgb_model.predict(X_train_val))
     test_r2 = r2_score(y_test, xgb_model.predict(X_test))
 
