@@ -4,6 +4,8 @@ import xgboost as xgb
 import shap
 import random
 import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend to prevent plots from popping up
 import plotly.express as px
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
