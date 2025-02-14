@@ -215,69 +215,6 @@ def merge_environment_socioeconomic_air_pollution_data(environment_results, soci
 
     return merged_data_with_deaths
 
-def start_predict_xgboost():
-    # try:
-        random_seed = 42
-        np.random.seed(random_seed)
-        random.seed(random_seed)
-
-        print("Defining files...")
-        files = define_files()
-        print("Files defined successfully!")
-
-        print("Getting common country codes...")
-        environment_factor_files_list = [
-            'transportation', 'coal', 'cropland', 'residential_commercial', 
-            'forest_clearing', 'petrochemicals', 'electricity_generation', 
-            'incineration_open_burning'
-        ]
-        socioeconomic_files_list = ['health_expenditure', 'urban_population']
-        common_country_codes = get_common_country_codes(files, environment_factor_files_list, socioeconomic_files_list, "air_pollution_death")
-
-        print("Loading and filtering data...")
-        air_pollution_df, env_data, socio_data = load_and_filter_data(files, common_country_codes)
-
-        if air_pollution_df is None:
-            print("ERROR: Data loading failed.")
-            return
-
-        print("Processing environment and socioeconomic data...")
-        environment_results, socioeconomic_results = process_environment_and_socioeconomic_data(env_data, socio_data, common_country_codes)
-        
-        # print("socioeconomic_results->>>>>>>>>>>>>>>\n",socioeconomic_results)
-
-        # **Merge environment, socioeconomic, and air pollution data**
-        print("Merging environment, socioeconomic, and air pollution data...")
-        merged_data = merge_environment_socioeconomic_air_pollution_data(environment_results, socioeconomic_results, air_pollution_df)
-        merged_data_with_outliers = merge_environment_socioeconomic_air_pollution_data(environment_results, socioeconomic_results, air_pollution_df)
-        # CHN and IND should be optional it can be toogled from include and exclude
-        merged_data_with_outliers = merged_data_with_outliers[merged_data_with_outliers['Country Code'] != 'CHN']
-        merged_data_with_outliers = merged_data_with_outliers[merged_data_with_outliers['Country Code'] != 'IND']
-
-        # if exclude_countries:
-            # merged_data = merged_data[~merged_data['Country Code'].isin(['CHN', 'IND'])]
-
-
-        print(f"Merged data has {merged_data.shape[0]} rows and {merged_data.shape[1]} columns.")
-        print(merged_data)  # Optional: Check the first few rows of the merged dataframe
-
-        model, X_train_val, y_train_val, train_r2, test_r2 = train_model(merged_data)
-        model_with, X_train_val_with, y_train_val_with, train_r2_with, test_r2_with = train_model(merged_data_with_outliers)
-
-        generate_beeswarm_plot(model_with, X_train_val_with)
-        
-        generate_html_file(merged_data, train_r2_with, test_r2_with)
-
-        # Generate merge data
-        # if merged_data is None or merged_data.empty:
-        #     print("ERROR: merged_data is empty or not defined.")
-        # else:
-        #     merged_data.to_csv("merged_data.csv", index=False)
-        #     print("merged_data.csv saved successfully!")
-
-    # except Exception as e:
-    #     print("An error occurred:", e)
-
 def train_model(df):
     # Prepare dataset
     X = df.drop(['SpatialDimValueCode', 'Air Pollution Deaths', 'FactValueNumeric'], axis=1, errors='ignore')
@@ -318,7 +255,7 @@ def train_model(df):
 
     # Run Optuna Optimization
     study = optuna.create_study(direction='maximize')
-    study.optimize(objective, n_trials=50)  # Run 50 trialsc
+    study.optimize(objective, n_trials=100)  # Run 50 trialsc
 
     # Get best parameters
     best_params = study.best_params
@@ -327,7 +264,7 @@ def train_model(df):
     # Train final model with best parameters
     xgb_model = xgb.XGBRegressor(**best_params)
     xgb_model.fit(X_train_val, y_train_val, eval_set=[(X_test, y_test)], verbose=True)
-
+ 
     # Final model evaluation
     train_r2 = r2_score(y_train_val, xgb_model.predict(X_train_val))
     test_r2 = r2_score(y_test, xgb_model.predict(X_test))
@@ -565,7 +502,65 @@ def generate_html_file(merged_data, train_r2, test_r2):
             </html>
             """)
 
+def start_predict_xgboost():
+    random_seed = 42
+    np.random.seed(random_seed)
+    random.seed(random_seed)
+
+    print("Defining files...")
+    files = define_files()
+    print("Files defined successfully!")
+
+    print("Getting common country codes...")
+    environment_factor_files_list = [
+        'transportation', 'coal', 'cropland', 'residential_commercial', 
+        'forest_clearing', 'petrochemicals', 'electricity_generation', 
+        'incineration_open_burning'
+    ]
+    socioeconomic_files_list = ['health_expenditure', 'urban_population']
+    common_country_codes = get_common_country_codes(files, environment_factor_files_list, socioeconomic_files_list, "air_pollution_death")
+
+    print("Loading and filtering data...")
+    air_pollution_df, env_data, socio_data = load_and_filter_data(files, common_country_codes)
+
+    if air_pollution_df is None:
+        print("ERROR: Data loading failed.")
+        return
+
+    print("Processing environment and socioeconomic data...")
+    environment_results, socioeconomic_results = process_environment_and_socioeconomic_data(env_data, socio_data, common_country_codes)
     
+    # print("socioeconomic_results->>>>>>>>>>>>>>>\n",socioeconomic_results)
+
+    # **Merge environment, socioeconomic, and air pollution data**
+    print("Merging environment, socioeconomic, and air pollution data...")
+    merged_data = merge_environment_socioeconomic_air_pollution_data(environment_results, socioeconomic_results, air_pollution_df)
+    merged_data_with_outliers = merge_environment_socioeconomic_air_pollution_data(environment_results, socioeconomic_results, air_pollution_df)
+    # CHN and IND should be optional it can be toogled from include and exclude
+    merged_data_with_outliers = merged_data_with_outliers[merged_data_with_outliers['Country Code'] != 'CHN']
+    merged_data_with_outliers = merged_data_with_outliers[merged_data_with_outliers['Country Code'] != 'IND']
+
+    # if exclude_countries:
+        # merged_data = merged_data[~merged_data['Country Code'].isin(['CHN', 'IND'])]
+
+
+    print(f"Merged data has {merged_data.shape[0]} rows and {merged_data.shape[1]} columns.")
+    print(merged_data)  # Optional: Check the first few rows of the merged dataframe
+
+    model, X_train_val, y_train_val, train_r2, test_r2 = train_model(merged_data)
+    model_with, X_train_val_with, y_train_val_with, train_r2_with, test_r2_with = train_model(merged_data_with_outliers)
+
+    generate_beeswarm_plot(model_with, X_train_val_with)
+    
+    generate_html_file(merged_data, train_r2_with, test_r2_with)
+
+    # Generate merge data
+    # if merged_data is None or merged_data.empty:
+    #     print("ERROR: merged_data is empty or not defined.")
+    # else:
+    #     merged_data.to_csv("merged_data.csv", index=False)
+    #     print("merged_data.csv saved successfully!")
+
 if __name__ == "__main__":
     print("Calling start_predict_xgboost()...")
     start_predict_xgboost()
